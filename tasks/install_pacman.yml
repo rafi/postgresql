@@ -5,7 +5,6 @@
   when: postgresql_version == 9.6
 
 - name: Checkout AUR package postgresql 9.5
-  become: "{{ ansible_user }}"
   git:
     repo: https://aur.archlinux.org/postgresql-9.5.git
     dest: /tmp/ansible-postgresql-9.5
@@ -14,7 +13,6 @@
   when: postgresql_version == 9.5
 
 - name: Ensure PostgreSQL package is built and installed
-  become: "{{ ansible_user }}"
   shell: makepkg -is --noconfirm
   args:
     chdir: /tmp/ansible-postgresql-9.5
