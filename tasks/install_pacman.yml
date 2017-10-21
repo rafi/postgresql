@@ -1,0 +1,42 @@
+---
+
+- name: Ensure latest PostgreSQL
+  pacman: name={{ postgresql_service_name }}
+  when: postgresql_version == 9.6
+
+- name: Checkout AUR package postgresql 9.5
+  become: "{{ ansible_user }}"
+  git:
+    repo: https://aur.archlinux.org/postgresql-9.5.git
+    dest: /tmp/ansible-postgresql-9.5
+    accept_hostkey: yes
+  register: postgresql_aur_checkout
+  when: postgresql_version == 9.5
+
+- name: Ensure PostgreSQL package is built and installed
+  become: "{{ ansible_user }}"
+  shell: makepkg -is --noconfirm
+  args:
+    chdir: /tmp/ansible-postgresql-9.5
+    creates: /tmp/postgresql-9.5-9.5.7-2-x86_64.pkg.tar.xz
+  when: postgresql_aur_checkout.changed and postgresql_version == 9.5
+
+- name: Adjust data directories
+  lineinfile:
+    path: /usr/lib/systemd/system/postgresql.service
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    insertafter: "^Group"
+  with_items:
+    - regexp: "^Environment=PGROOT="
+      line: "Environment=PGROOT={{ postgresql_conf_directory }}"
+    - regexp: "^PIDFile="
+      line: "PIDFile={{ postgresql_external_pid_file }}"
+  when: postgresql_version == 9.5
+
+- name: Adjust used data directory
+  replace:
+    path: /usr/lib/systemd/system/postgresql.service
+    regexp: '^(.+)\$\{PGROOT\}\/data(.*)?$'
+    replace: '\1${PGROOT}\2'
+  when: postgresql_version == 9.5

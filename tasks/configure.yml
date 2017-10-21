@@ -7,6 +7,22 @@
   register: pgdata_dir_remove
   when: ansible_os_family == "RedHat" and postgresql_cluster_reset
 
+- name: PostgreSQL | Check whether the postgres data directory is initialized
+  stat:
+    path: "{{ postgresql_data_directory }}/PG_VERSION"
+  when: (ansible_os_family == "RedHat" or
+         ansible_os_family.replace(" ", "") == "ArchLinux")
+        and not postgresql_cluster_reset
+  register: pgdata_dir_initialized
+
+- name: PostgreSQL | Ensure configuration directory exists
+  file:
+    path: "{{ postgresql_conf_directory }}"
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_group }}"
+    mode: 0750
+    state: directory
+
 - name: PostgreSQL | Make sure the postgres data directory exists
   file:
     path: "{{postgresql_data_directory}}"
@@ -22,7 +38,8 @@
   with_items:
     - "{{ postgresql_locale }}"
     - "{{ postgresql_ctype }}"
-  when: ansible_os_family == "Debian"
+  when: ansible_os_family == "Debian" or
+        ansible_os_family.replace(" ", "") == "ArchLinux"
 
 - name: PostgreSQL | Ensure the locale is generated | RedHat
   become: yes
@@ -48,30 +65,17 @@
   become_user: "{{ postgresql_service_user }}"
   when: ansible_os_family == "Debian" and postgresql_cluster_reset and pgdata_dir_exist.changed
 
-- name: PostgreSQL | Check whether the postgres data directory is initialized
-  stat:
-    path: "{{ postgresql_data_directory }}/PG_VERSION"
-  when: ansible_os_family == "RedHat" and not postgresql_cluster_reset
-  register: pgdata_dir_initialized
-
 - name: PostgreSQL | Initialize the database | RedHat
   command: >
     {{ postgresql_bin_directory }}/initdb -D {{ postgresql_data_directory }}
     --locale={{ postgresql_locale }} --encoding={{ postgresql_encoding }}
   become: yes
   become_user: "{{ postgresql_service_user }}"
-  when: ansible_os_family == "RedHat" and
+  when: (ansible_os_family == "RedHat" or
+         ansible_os_family.replace(" ", "") == "ArchLinux")
+        and
         (postgresql_cluster_reset or
-         pgdata_dir_exist.changed or
          not pgdata_dir_initialized.stat.exists)
-
-- name: PostgreSQL | Ensure configuration directory exists
-  file:
-    path: "{{ postgresql_conf_directory }}"
-    owner: "{{ postgresql_service_user }}"
-    group: "{{ postgresql_service_group }}"
-    mode: 0750
-    state: directory
 
 - name: PostgreSQL | Update configuration - pt. 1 (pg_hba.conf)
   template:
@@ -151,6 +155,12 @@
     owner: "{{ postgresql_service_user }}"
     group: "{{ postgresql_service_group }}"
     mode: u=rwX,g=rwXs,o=rx
+
+- name: PostgreSQL | Systemd daemon reload
+  systemd:
+    name: "{{ postgresql_service_name }}"
+    daemon_reload: yes
+  when: ansible_service_mgr == "systemd"
 
 - name: PostgreSQL | Enable service
   service:
